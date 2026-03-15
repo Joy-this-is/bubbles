@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v1.3</title>
+<title>The Bubbles POS v1.4</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -279,7 +279,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <img id="login-logo-img" class="login-logo-img" src="" alt="Shop Logo">
       <span class="login-fish" id="login-fish-emoji">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v1.3</div>
+      <div class="login-tagline">aquarium pos · v1.4</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -662,7 +662,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function loadConfig() {
   const saved = localStorage.getItem('tb_config');
   // DEFAULT_URL is baked in — works on every device with zero configuration
-  const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzUJcSlxIpmRNfODTbhmNpwgNffC9lDgOf8S1HRrBa8ohytnWsgBvwPlEg0UFgjiLw/exec';
+  const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwj98rxmv4wRF5EJfKPkxUkKYlM7K3csB0Q-PYvfbJi3m4WYi6GzPwPSQ6vUG8RCPhH/exec';
   CFG = saved ? JSON.parse(saved) : { scriptUrl: DEFAULT_URL, terminal: 'T-1', lowStock: 5 };
   // Always ensure URL is set — even if saved config has empty URL
   if (!CFG.scriptUrl) CFG.scriptUrl = DEFAULT_URL;

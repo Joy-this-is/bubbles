@@ -716,8 +716,18 @@ function saveLocalData() {
 // ═══════════════════════════════════════════════
 async function api(action, payload = {}) {
   if (!CFG.scriptUrl) throw new Error('Script URL not configured. Go to Admin → App Configuration.');
-  const url = CFG.scriptUrl + '?action=' + encodeURIComponent(action);
-  const res = await fetch(url, {
+
+  // For simple read actions use GET (avoids CORS preflight on mobile)
+  const getActions = ['checkLogin', 'getInventory', 'getAttendance', 'getDownloadUrl'];
+  if (getActions.includes(action)) {
+    const params = new URLSearchParams({ action, ...payload });
+    const res = await fetch(CFG.scriptUrl + '?' + params.toString());
+    const text = await res.text();
+    try { return JSON.parse(text); } catch(e) { throw new Error('Server error: ' + text.substring(0, 100)); }
+  }
+
+  // For write actions use POST with text/plain to avoid CORS preflight
+  const res = await fetch(CFG.scriptUrl + '?action=' + encodeURIComponent(action), {
     method: 'POST',
     body: JSON.stringify({ action, ...payload }),
     headers: { 'Content-Type': 'text/plain' }

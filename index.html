@@ -1400,8 +1400,10 @@ function showToast(msg, type = '') {
 //  LOGO & BRANDING
 // ═══════════════════════════════════════════════
 function loadBranding() {
-  const logoData = localStorage.getItem('tb_logo');
-  const shopName = localStorage.getItem('tb_shop_name') || 'The Bubbles';
+  // Priority: 1. manually uploaded logo (localStorage), 2. logo.jpeg from GitHub repo, 3. emoji fallback
+  const logoData   = localStorage.getItem('tb_logo');
+  const shopName   = localStorage.getItem('tb_shop_name') || 'The Bubbles';
+  const repoLogo   = 'logo.jpeg';   // served from same GitHub Pages root
 
   // Apply shop name everywhere
   document.getElementById('tb-shop-name').textContent = shopName;
@@ -1409,33 +1411,40 @@ function loadBranding() {
   const cfgName = document.getElementById('cfg-shop-name');
   if (cfgName) cfgName.value = shopName;
 
-  if (logoData) {
-    // Topbar: hide emoji, show img
+  function applyLogo(src) {
+    // Topbar
     document.getElementById('tb-fish-emoji').style.display = 'none';
     const tbImg = document.getElementById('tb-logo-img');
-    tbImg.src = logoData;
-    tbImg.style.display = 'block';
-
-    // Login screen: hide emoji, show img
+    tbImg.src = src; tbImg.style.display = 'block';
+    // Login
     document.getElementById('login-fish-emoji').style.display = 'none';
     const loginImg = document.getElementById('login-logo-img');
-    loginImg.src = logoData;
-    loginImg.style.display = 'block';
-
+    loginImg.src = src; loginImg.style.display = 'block';
     // Admin preview
     const previewImg = document.getElementById('logo-preview-img');
     if (previewImg) {
-      previewImg.src = logoData;
-      previewImg.style.display = 'block';
+      previewImg.src = src; previewImg.style.display = 'block';
       document.getElementById('logo-preview-placeholder').style.display = 'none';
       document.getElementById('logo-remove-btn').style.display = 'block';
     }
-  } else {
-    // Ensure emoji is visible
+  }
+
+  function showEmoji() {
     document.getElementById('tb-fish-emoji').style.display = '';
     document.getElementById('tb-logo-img').style.display = 'none';
     document.getElementById('login-fish-emoji').style.display = '';
     document.getElementById('login-logo-img').style.display = 'none';
+  }
+
+  if (logoData) {
+    // Manually uploaded logo takes priority
+    applyLogo(logoData);
+  } else {
+    // Try loading logo.jpeg from GitHub repo root
+    const img = new Image();
+    img.onload  = () => applyLogo(repoLogo);
+    img.onerror = () => showEmoji();
+    img.src = repoLogo + '?v=' + Date.now(); // cache bust
   }
 }
 

@@ -290,6 +290,11 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
     <button class="login-btn" id="li-btn" onclick="doLogin()">Sign In</button>
     <div class="login-err" id="li-err"></div>
     <div class="login-loader" id="li-loader">Verifying credentials…</div>
+    <div style="text-align:center;margin-top:24px">
+      <button onclick="showSetupScreen()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:12px;cursor:pointer;font-family:var(--font);padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.1);transition:all .2s" onmouseover="this.style.color='rgba(255,255,255,.6)'" onmouseout="this.style.color='rgba(255,255,255,.3)'">
+        ⚙ Configure this device
+      </button>
+    </div>
   </div>
 
   <!-- TOPBAR -->
@@ -439,7 +444,13 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
     <!-- ══ ATTENDANCE PANEL ══ -->
     <div class="panel" id="panel-attendance">
       <div class="card">
-        <div class="card-hd">Today's Attendance <span id="att-date" style="font-size:11px;font-weight:400;color:var(--muted)"></span></div>
+        <div class="card-hd">
+          Today's Attendance
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="att-date" style="font-size:11px;font-weight:400;color:var(--muted)"></span>
+            <button id="att-reset-btn" class="btn btn-sm btn-outline" style="display:none;color:var(--coral);border-color:var(--coral);font-size:11px;padding:4px 10px" onclick="resetTodayAttendance()">Reset</button>
+          </div>
+        </div>
         <div id="att-users-list"><div class="loading-state"><span class="spinner"></span></div></div>
       </div>
       <div class="card">
@@ -624,7 +635,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dl-end').value = today;
 
   // Show first-run setup if no script URL configured yet
-  if (!CFG.scriptUrl) {
+  // But if there are saved credentials, go straight to login (returning user on same device)
+  const hasSavedCreds = localStorage.getItem('tb_credentials');
+  if (!CFG.scriptUrl && !hasSavedCreds) {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('setup-screen').style.display = 'flex';
     return;
@@ -660,6 +673,18 @@ function loadConfig() {
   document.getElementById('cfg-lowstock').value = CFG.lowStock || 5;
 }
 
+function showSetupScreen() {
+  // Load current config values into setup fields if they exist
+  const curUrl = CFG.scriptUrl || '';
+  const curTerminal = CFG.terminal || 'T-1';
+  document.getElementById('setup-url').value = curUrl;
+  document.getElementById('setup-terminal').value = curTerminal;
+  document.getElementById('setup-err').textContent = '';
+  // Switch screens
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('setup-screen').style.display = 'flex';
+}
+
 function saveFirstRunSetup() {
   const url = document.getElementById('setup-url').value.trim();
   const terminal = document.getElementById('setup-terminal').value.trim() || 'T-1';
@@ -677,6 +702,8 @@ function saveFirstRunSetup() {
   // Hide setup, show login
   document.getElementById('setup-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
+  // Pre-fill terminal in welcome if already logged in
+  document.getElementById('tb-user').textContent = (localStorage.getItem('tb_credentials') ? JSON.parse(localStorage.getItem('tb_credentials')).user : '') + ' · ' + terminal;
   loadBranding();
   showToast('Device configured ✓', 'success');
 }
@@ -1202,20 +1229,30 @@ function renderAttUsers() {
   const el = document.getElementById('att-users-list');
   if (!users.length) { el.innerHTML = '<div class="empty"><div class="empty-text">No users cached. Sync first.</div></div>'; return; }
 
+  // Show reset button for admins only
+  const resetBtn = document.getElementById('att-reset-btn');
+  if (resetBtn) resetBtn.style.display = SESSION.role === 'ADMIN' ? 'block' : 'none';
+
   el.innerHTML = users.filter(u => u.active === 'ACTIVE').map(u => {
     const key = u.username.toLowerCase();
     const state = ATT_STATE[key];
     const initials = u.username.substring(0, 2).toUpperCase();
     const avClass = u.role === 'ADMIN' ? 'att-av-admin' : 'att-av-seller';
     let statusText = 'Not logged in today';
+    let totalHtml = '';
     let btnHtml = `<button class="att-in-btn" onclick="attAction('${key}','in')">Log In</button>`;
-    if (state) {
-      if (state.inTime && !state.outTime) {
+
+    if (state && state.inTime) {
+      if (!state.outTime) {
+        // Logged in, not yet logged out
         statusText = 'In: ' + state.inTime;
         btnHtml = `<button class="att-out-btn" onclick="attAction('${key}','out')">Log Out</button>`;
-      } else if (state.inTime && state.outTime) {
+      } else {
+        // Has both in and out — can still log out again (overwrites)
+        const total = calcTotalTime(state.inTime, state.outTime);
         statusText = 'In: ' + state.inTime + ' · Out: ' + state.outTime;
-        btnHtml = `<button class="att-done-btn">Done</button>`;
+        totalHtml = `<div class="att-status" style="color:var(--teal);font-size:11px;margin-top:2px">Total: ${total}</div>`;
+        btnHtml = `<button class="att-out-btn" onclick="attAction('${key}','out')" style="font-size:11px;padding:5px 10px">Update Out</button>`;
       }
     }
     return `<div class="att-item">
@@ -1223,10 +1260,38 @@ function renderAttUsers() {
       <div style="flex:1">
         <div class="att-name">${escHtml(u.username)}</div>
         <div class="att-status">${escHtml(statusText)}</div>
+        ${totalHtml}
       </div>
       ${btnHtml}
     </div>`;
   }).join('');
+}
+
+function calcTotalTime(inTime, outTime) {
+  // Parse "HH:MM am/pm" or "HH:MM" format
+  function toMinutes(t) {
+    if (!t) return 0;
+    t = t.trim();
+    let hours = 0, mins = 0;
+    const ampm = t.match(/(am|pm)/i);
+    const parts = t.replace(/(am|pm)/i,'').trim().split(':');
+    hours = parseInt(parts[0]) || 0;
+    mins  = parseInt(parts[1]) || 0;
+    if (ampm) {
+      const ap = ampm[0].toLowerCase();
+      if (ap === 'pm' && hours !== 12) hours += 12;
+      if (ap === 'am' && hours === 12) hours = 0;
+    }
+    return hours * 60 + mins;
+  }
+  const inMins  = toMinutes(inTime);
+  const outMins = toMinutes(outTime);
+  let diff = outMins - inMins;
+  if (diff < 0) diff += 24 * 60; // handle midnight crossover
+  const h = Math.floor(diff / 60);
+  const m = diff % 60;
+  if (h === 0) return m + ' min';
+  return h + 'h ' + (m > 0 ? m + 'm' : '');
 }
 
 async function attAction(username, type) {
@@ -1235,8 +1300,22 @@ async function attAction(username, type) {
   const dateStr = now.toISOString().split('T')[0];
 
   if (!ATT_STATE[username]) ATT_STATE[username] = {};
-  if (type === 'in') ATT_STATE[username].inTime = timeStr;
-  else ATT_STATE[username].outTime = timeStr;
+
+  if (type === 'in') {
+    // Login only recorded ONCE — ignore if already has an inTime
+    if (ATT_STATE[username].inTime) {
+      showToast(username + ' already logged in today', '');
+      return;
+    }
+    ATT_STATE[username].inTime = timeStr;
+  } else {
+    // Logout always OVERWRITES — can be done multiple times
+    ATT_STATE[username].outTime = timeStr;
+    // Recalculate total
+    if (ATT_STATE[username].inTime) {
+      ATT_STATE[username].totalTime = calcTotalTime(ATT_STATE[username].inTime, timeStr);
+    }
+  }
 
   saveLocalData();
   renderAttUsers();
@@ -1252,6 +1331,20 @@ async function attAction(username, type) {
   } catch(e) {
     showToast('Saved locally — sync later', '');
   }
+}
+
+function resetTodayAttendance() {
+  if (SESSION.role !== 'ADMIN') { showToast('Admin only', 'error'); return; }
+  if (!confirm('Reset today\'s attendance for all users? This cannot be undone.')) return;
+  ATT_STATE = {};
+  saveLocalData();
+  renderAttUsers();
+  // Also clear from sheet if connected
+  const today = new Date().toISOString().split('T')[0];
+  if (CFG.scriptUrl) {
+    api('resetAttendance', { date: today }).catch(() => {});
+  }
+  showToast('Today\'s attendance reset ✓', 'success');
 }
 
 async function loadAttHistory() {

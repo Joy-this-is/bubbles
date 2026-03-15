@@ -256,6 +256,23 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 
 <div id="app">
 
+  <!-- FIRST-RUN SETUP SCREEN -->
+  <div id="setup-screen" style="display:none">
+    <div class="login-logo">
+      <img id="setup-logo-img" class="login-logo-img" src="logo.jpeg" alt="Logo" onerror="this.style.display='none';document.getElementById('setup-fish').style.display='block'">
+      <span class="login-fish" id="setup-fish" style="display:none">🐠</span>
+      <div class="login-brand">The Bubbles</div>
+      <div class="login-tagline">first time setup</div>
+    </div>
+    <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:10px;line-height:1.6">Paste your <b style="color:#7de8d4">Google Apps Script URL</b> below to connect this device to your shop data.</div>
+      <input class="login-input" id="setup-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" style="margin-bottom:0">
+    </div>
+    <input class="login-input" id="setup-terminal" type="text" placeholder="Terminal name (e.g. T-1, T-2)" value="T-1">
+    <button class="login-btn" onclick="saveFirstRunSetup()">Connect &amp; Continue →</button>
+    <div class="login-err" id="setup-err"></div>
+  </div>
+
   <!-- LOGIN -->
   <div id="login-screen">
     <div class="login-logo">
@@ -606,6 +623,13 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dl-start').value = today;
   document.getElementById('dl-end').value = today;
 
+  // Show first-run setup if no script URL configured yet
+  if (!CFG.scriptUrl) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('setup-screen').style.display = 'flex';
+    return;
+  }
+
   // Auto-login
   const saved = localStorage.getItem('tb_credentials');
   if (saved) {
@@ -634,6 +658,27 @@ function loadConfig() {
   document.getElementById('cfg-url').value = CFG.scriptUrl || '';
   document.getElementById('cfg-terminal').value = CFG.terminal || 'T-1';
   document.getElementById('cfg-lowstock').value = CFG.lowStock || 5;
+}
+
+function saveFirstRunSetup() {
+  const url = document.getElementById('setup-url').value.trim();
+  const terminal = document.getElementById('setup-terminal').value.trim() || 'T-1';
+  const errEl = document.getElementById('setup-err');
+  if (!url || !url.includes('script.google.com')) {
+    errEl.textContent = 'Please paste a valid Apps Script URL.';
+    return;
+  }
+  CFG = { scriptUrl: url, terminal, lowStock: 5 };
+  localStorage.setItem('tb_config', JSON.stringify(CFG));
+  // Update config fields in admin panel
+  document.getElementById('cfg-url').value = url;
+  document.getElementById('cfg-terminal').value = terminal;
+  document.getElementById('cfg-lowstock').value = 5;
+  // Hide setup, show login
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  loadBranding();
+  showToast('Device configured ✓', 'success');
 }
 
 function saveConfig() {

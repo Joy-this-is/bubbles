@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v1.8</title>
+<title>The Bubbles POS v1.9</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -276,10 +276,12 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   <!-- LOGIN -->
   <div id="login-screen">
     <div class="login-logo">
-      <img id="login-logo-img" class="login-logo-img" src="" alt="Shop Logo">
-      <span class="login-fish" id="login-fish-emoji">🐠</span>
+      <img id="login-logo-img" class="login-logo-img" src="logo.jpeg" alt="Shop Logo" 
+           style="display:block" 
+           onerror="this.style.display='none';document.getElementById('login-fish-emoji').style.display='block'">
+      <span class="login-fish" id="login-fish-emoji" style="display:none">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v1.8</div>
+      <div class="login-tagline">aquarium pos · v1.9</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -300,8 +302,10 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   <!-- TOPBAR -->
   <div id="topbar">
     <div class="tb-logo">
-      <img id="tb-logo-img" class="tb-logo-img" src="" alt="Logo">
-      <span class="tb-fish" id="tb-fish-emoji">🐠</span>
+      <img id="tb-logo-img" class="tb-logo-img" src="logo.jpeg" alt="Logo"
+           style="display:block"
+           onerror="this.style.display='none';document.getElementById('tb-fish-emoji').style.display='block'">
+      <span class="tb-fish" id="tb-fish-emoji" style="display:none">🐠</span>
       <div>
         <div class="tb-title" id="tb-shop-name">The Bubbles</div>
         <div class="tb-sub" id="tb-user">— POS Terminal</div>
@@ -1602,8 +1606,7 @@ async function downloadSheetCSV() {
 
     // Build CSV from sheet data
     const allRows = [result.headers, ...result.rows];
-    const csv = allRows.map(r => r.map(f => '"' + String(f||'').replace(/"/g,'""') + '"').join(',')).join('
-');
+    const csv = allRows.map(r => r.map(f => '"' + String(f||'').replace(/"/g,'""') + '"').join(',')).join('\n');
     const blob = new Blob([csv], {type:'text/csv'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');

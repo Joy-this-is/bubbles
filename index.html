@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v1.6</title>
+<title>The Bubbles POS v1.7</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -279,7 +279,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <img id="login-logo-img" class="login-logo-img" src="" alt="Shop Logo">
       <span class="login-fish" id="login-fish-emoji">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v1.6</div>
+      <div class="login-tagline">aquarium pos · v1.7</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -488,8 +488,14 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <div class="frow"><label class="flabel">From Date</label><input type="date" id="dl-start"></div>
           <div class="frow"><label class="flabel">To Date</label><input type="date" id="dl-end"></div>
         </div>
-        <button class="btn btn-primary" onclick="downloadReport()" style="margin-bottom:8px">Download Sales CSV</button>
-        <button class="btn btn-outline" onclick="downloadFullReport()">Download Full Log (Excel)</button>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+          <b style="color:var(--ink)">Summary</b> — one row per sale (Bill totals only, no line items)<br>
+          <b style="color:var(--ink)">Detail</b> — all rows (Bill header + every line item)
+        </div>
+        <div class="row2">
+          <button class="btn btn-primary" onclick="downloadReport('summary')">⬇ Summary CSV</button>
+          <button class="btn btn-outline" onclick="downloadReport('detail')">⬇ Detail CSV</button>
+        </div>
       </div>
 
       <div class="card">
@@ -1465,39 +1471,74 @@ function renderAdminUsers() {
   `).join('');
 }
 
-async function downloadReport() {
-  const start = document.getElementById('dl-start').value;
-  const end = document.getElementById('dl-end').value;
-  if (!start || !end) { showToast('Select date range', 'error'); return; }
+async function downloadReport(mode) {
+  const s = document.getElementById('dl-start').value;
+  const e = document.getElementById('dl-end').value;
+  if (!s || !e) { showToast('Select date range first', 'error'); return; }
 
-  // Build CSV from local log filtered by date
-  const filtered = SALE_LOG.filter(s => s.date >= start && s.date <= end);
-  if (!filtered.length) { showToast('No sales in this range', ''); return; }
+  const startD = new Date(s); startD.setHours(0,0,0,0);
+  const endD   = new Date(e); endD.setHours(23,59,59,999);
 
-  const rows = [['Sale ID','Date','Seller','Terminal','Category','Item Name','Qty','Unit Price','Line Total','Sub Total','Discount','Grand Total','Payment','Customer Name','Customer Phone','Dues']];
-  filtered.forEach(s => {
-    s.items.forEach(item => {
-      rows.push([s.saleId, s.date, s.seller, s.terminal, item.category, item.name, item.qty, item.unitPrice, item.lineTotal, s.subTotal, s.discount, s.grandTotal, s.paymentMode, s.customerName||'', s.customerPhone||'', s.dues||0]);
-    });
+  // Filter local SALE_LOG by date
+  const filtered = SALE_LOG.filter(sale => {
+    const d = new Date(sale.date || sale.timestamp);
+    return d >= startD && d <= endD;
   });
 
-  const csv = rows.map(r => r.map(f => '"'+String(f||'').replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `Sales_${start}_to_${end}.csv`;
-  a.click(); URL.revokeObjectURL(url);
-  showToast('CSV downloaded ✓', 'success');
-}
+  if (!filtered.length) { showToast('No sales in this date range', ''); return; }
 
-async function downloadFullReport() {
-  try {
-    if (!CFG.scriptUrl) { showToast('Script URL required for Excel export', 'error'); return; }
-    const start = document.getElementById('dl-start').value;
-    const end = document.getElementById('dl-end').value;
-    const res = await api('getDownloadUrl');
-    if (res.url) window.open(res.url + '?action=download_csv&start=' + start + '&end=' + end, '_blank');
-  } catch(e) { showToast('Use CSV download instead', ''); }
+  let rows = [];
+  if (mode === 'detail') {
+    // Detail: BILL header row + ITEM rows — discount ONLY on BILL row
+    rows.push(['Row Type','Sale ID','Date','Time','Seller','Terminal',
+               'Category','Item Name','Qty','Unit Price','Line Total',
+               'Sub Total','Discount','Grand Total','Payment','Customer','Phone','Dues']);
+    filtered.forEach(sale => {
+      const t = new Date(sale.timestamp);
+      const timeStr = t.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+      // BILL row — all financial totals here
+      rows.push(['BILL', sale.saleId, sale.date, timeStr, sale.seller, sale.terminal,
+                 '','','','','',
+                 sale.subTotal, sale.discount, sale.grandTotal,
+                 sale.paymentMode, sale.customerName||'', sale.customerPhone||'', sale.dues||0]);
+      // ITEM rows — no discount, no grand total
+      (sale.items||[]).forEach(item => {
+        rows.push(['ITEM', sale.saleId, sale.date, timeStr, sale.seller, sale.terminal,
+                   item.category||'', item.name||'', item.qty,
+                   item.unitPrice||0, item.lineTotal||(item.qty*item.unitPrice),
+                   '','','','','','','']);
+      });
+    });
+  } else {
+    // Summary: one row per sale — discount appears exactly once
+    rows.push(['Sale ID','Date','Time','Seller','Terminal',
+               'Items Summary','Sub Total','Discount','Grand Total',
+               'Payment','Customer','Phone','Dues']);
+    filtered.forEach(sale => {
+      const t = new Date(sale.timestamp);
+      const timeStr = t.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+      const itemsSummary = (sale.items||[]).map(i => i.name + ' x' + i.qty).join('; ');
+      rows.push([
+        sale.saleId, sale.date, timeStr, sale.seller, sale.terminal,
+        itemsSummary,
+        sale.subTotal,    // sub total once
+        sale.discount,    // discount once
+        sale.grandTotal,  // grand total once
+        sale.paymentMode, sale.customerName||'', sale.customerPhone||'', sale.dues||0
+      ]);
+    });
+  }
+
+  // Build and download CSV
+  const csv = rows.map(r => r.map(f => '"' + String(f||'').replace(/"/g,'""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = (mode==='detail' ? 'Sales_Detail_' : 'Sales_Summary_') + s + '_to_' + e + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Downloaded ' + (mode==='detail'?'detail':'summary') + ' CSV ✓', 'success');
 }
 
 async function confirmReset(sheetName) {

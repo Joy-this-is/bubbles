@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v1.7</title>
+<title>The Bubbles POS v1.8</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -279,7 +279,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <img id="login-logo-img" class="login-logo-img" src="" alt="Shop Logo">
       <span class="login-fish" id="login-fish-emoji">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v1.7</div>
+      <div class="login-tagline">aquarium pos · v1.8</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -488,13 +488,23 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <div class="frow"><label class="flabel">From Date</label><input type="date" id="dl-start"></div>
           <div class="frow"><label class="flabel">To Date</label><input type="date" id="dl-end"></div>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-          <b style="color:var(--ink)">Summary</b> — one row per sale (Bill totals only, no line items)<br>
-          <b style="color:var(--ink)">Detail</b> — all rows (Bill header + every line item)
+
+        <div style="background:var(--foam);border:1px solid #b0ddd5;border-radius:10px;padding:12px 14px;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:4px">⬇ Download from Sheet (recommended)</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Fetches directly from Google Sheet — works on any device, always has all sales data.</div>
+          <div class="row2">
+            <button class="btn btn-teal" onclick="downloadFromSheet('summary')">Summary CSV</button>
+            <button class="btn btn-outline" onclick="downloadFromSheet('detail')">Full Detail CSV</button>
+          </div>
         </div>
-        <div class="row2">
-          <button class="btn btn-primary" onclick="downloadReport('summary')">⬇ Summary CSV</button>
-          <button class="btn btn-outline" onclick="downloadReport('detail')">⬇ Detail CSV</button>
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">⬇ Download from this device</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Uses locally cached sales only — may not include sales from other devices.</div>
+          <div class="row2">
+            <button class="btn btn-outline" onclick="downloadReport('summary')" style="font-size:12px">Summary</button>
+            <button class="btn btn-outline" onclick="downloadReport('detail')" style="font-size:12px">Detail</button>
+          </div>
         </div>
       </div>
 
@@ -1471,6 +1481,44 @@ function renderAdminUsers() {
   `).join('');
 }
 
+async function downloadFromSheet(mode) {
+  const s = document.getElementById('dl-start').value;
+  const e = document.getElementById('dl-end').value;
+  if (!s || !e) { showToast('Select date range first', 'error'); return; }
+  if (!CFG.scriptUrl) { showToast('Script URL not configured', 'error'); return; }
+
+  showToast('Fetching from Sheet…', '');
+
+  try {
+    // Build the download URL — Apps Script serves the CSV directly
+    const url = CFG.scriptUrl + '?action=download_csv&start=' + s + '&end=' + e + '&mode=' + mode;
+
+    // Fetch the CSV content
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Server error ' + res.status);
+    const text = await res.text();
+
+    if (!text || text.includes('No data') || text.includes('not found')) {
+      showToast('No sales found in this date range', '');
+      return;
+    }
+
+    // Download it
+    const blob = new Blob([text], { type: 'text/csv' });
+    const burl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = burl;
+    a.download = (mode === 'summary' ? 'Sales_Summary_' : 'Sales_Detail_') + s + '_to_' + e + '.csv';
+    a.click();
+    URL.revokeObjectURL(burl);
+    showToast('Downloaded from Sheet ✓', 'success');
+  } catch(err) {
+    showToast('Download failed: ' + err.message, 'error');
+  }
+}
+
+
+
 async function downloadReport(mode) {
   const s = document.getElementById('dl-start').value;
   const e = document.getElementById('dl-end').value;
@@ -1539,6 +1587,34 @@ async function downloadReport(mode) {
   a.click();
   URL.revokeObjectURL(url);
   showToast('Downloaded ' + (mode==='detail'?'detail':'summary') + ' CSV ✓', 'success');
+}
+
+async function downloadSheetCSV() {
+  const s = document.getElementById('dl-start').value;
+  const e = document.getElementById('dl-end').value;
+  if (!s || !e) { showToast('Select date range first', 'error'); return; }
+
+  showToast('Fetching from Sheet…', '');
+  try {
+    const result = await api('getSheetSales', { start: s, end: e });
+    if (result.status !== 'ok') { showToast('Error: ' + result.message, 'error'); return; }
+    if (!result.rows || !result.rows.length) { showToast('No sales in this range on Sheet', ''); return; }
+
+    // Build CSV from sheet data
+    const allRows = [result.headers, ...result.rows];
+    const csv = allRows.map(r => r.map(f => '"' + String(f||'').replace(/"/g,'""') + '"').join(',')).join('
+');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'Sales_Sheet_' + s + '_to_' + e + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Downloaded ' + result.rows.length + ' rows from Sheet ✓', 'success');
+  } catch(err) {
+    showToast('Failed to fetch from Sheet', 'error');
+  }
 }
 
 async function confirmReset(sheetName) {

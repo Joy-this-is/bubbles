@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v1.9</title>
+<title>The Bubbles POS v2.0</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -281,7 +281,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
            onerror="this.style.display='none';document.getElementById('login-fish-emoji').style.display='block'">
       <span class="login-fish" id="login-fish-emoji" style="display:none">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v1.9</div>
+      <div class="login-tagline">aquarium pos · v2.0</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -740,20 +740,28 @@ function saveConfig() {
 // ═══════════════════════════════════════════════
 //  LOCAL DATA
 // ═══════════════════════════════════════════════
+function localDateStr() {
+  // Use LOCAL date (not UTC) — avoids IST/UTC date mismatch after 6:30 PM IST
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth()+1).padStart(2,'0');
+  const dd   = String(d.getDate()).padStart(2,'0');
+  return yyyy + '-' + mm + '-' + dd;
+}
+
 function loadLocalData() {
   const inv = localStorage.getItem('tb_inventory');
   if (inv) INVENTORY = JSON.parse(inv);
   const log = localStorage.getItem('tb_log');
   if (log) SALE_LOG = JSON.parse(log);
-  const att = localStorage.getItem('tb_att_' + new Date().toISOString().split('T')[0]);
+  const att = localStorage.getItem('tb_att_' + localDateStr());
   if (att) ATT_STATE = JSON.parse(att);
 }
 
 function saveLocalData() {
   localStorage.setItem('tb_inventory', JSON.stringify(INVENTORY));
   localStorage.setItem('tb_log', JSON.stringify(SALE_LOG));
-  const today = new Date().toISOString().split('T')[0];
-  localStorage.setItem('tb_att_' + today, JSON.stringify(ATT_STATE));
+  localStorage.setItem('tb_att_' + localDateStr(), JSON.stringify(ATT_STATE));
 }
 
 // ═══════════════════════════════════════════════
@@ -1319,7 +1327,7 @@ function calcTotalTime(inTime, outTime) {
 async function attAction(username, type) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toISOString().split('T')[0];
+  const dateStr = localDateStr(); // local date — avoids UTC/IST mismatch
 
   if (!ATT_STATE[username]) ATT_STATE[username] = {};
 

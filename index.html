@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v2.0</title>
+<title>The Bubbles POS v2.1</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -281,7 +281,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
            onerror="this.style.display='none';document.getElementById('login-fish-emoji').style.display='block'">
       <span class="login-fish" id="login-fish-emoji" style="display:none">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v2.0</div>
+      <div class="login-tagline">aquarium pos · v2.1</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -648,7 +648,7 @@ let toastTimer;
 window.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   loadBranding();
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   document.getElementById('sale-date').value = today;
   document.getElementById('att-hist-date').value = today;
   document.getElementById('dl-start').value = today;
@@ -1247,7 +1247,77 @@ function updateInvStats() {
 function loadAttDate() {
   const today = new Date();
   document.getElementById('att-date').textContent = today.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-  renderAttUsers();
+  // Admin fetches from Sheet — sees all users' real times from any device
+  // Seller uses local state only
+  if (SESSION.role === 'ADMIN') {
+    fetchAndRenderAttFromSheet();
+  } else {
+    renderAttUsers();
+  }
+}
+
+async function fetchAndRenderAttFromSheet() {
+  const el = document.getElementById('att-users-list');
+  const resetBtn = document.getElementById('att-reset-btn');
+  if (resetBtn) resetBtn.style.display = 'block';
+
+  // Show loading
+  el.innerHTML = '<div class="loading-state"><span class="spinner"></span> Loading attendance…</div>';
+
+  try {
+    const today = localDateStr();
+    const res = await api('getAttendance', { date: today });
+    const users = JSON.parse(localStorage.getItem('tb_users') || '[]');
+    const activeUsers = users.filter(u => u.active === 'ACTIVE');
+
+    // Merge sheet records into ATT_STATE so local actions still work
+    if (res.status === 'ok' && res.records) {
+      res.records.forEach(r => {
+        const key = r.username.toLowerCase();
+        ATT_STATE[key] = {
+          inTime:    r.inTime   || '',
+          outTime:   r.outTime  || '',
+          totalTime: r.totalTime|| ''
+        };
+      });
+      saveLocalData();
+    }
+
+    el.innerHTML = activeUsers.map(u => {
+      const key   = u.username.toLowerCase();
+      const state = ATT_STATE[key] || {};
+      const initials = u.username.substring(0, 2).toUpperCase();
+      const avClass  = u.role === 'ADMIN' ? 'att-av-admin' : 'att-av-seller';
+      let statusText = 'Not logged in today';
+      let totalHtml  = '';
+      let btnHtml    = `<button class="att-in-btn" onclick="attAction('${key}','in')">Log In</button>`;
+
+      if (state.inTime) {
+        if (!state.outTime) {
+          statusText = 'In: ' + state.inTime;
+          btnHtml = `<button class="att-out-btn" onclick="attAction('${key}','out')">Log Out</button>`;
+        } else {
+          const total = state.totalTime || calcTotalTime(state.inTime, state.outTime);
+          statusText = 'In: ' + state.inTime + ' · Out: ' + state.outTime;
+          totalHtml  = `<div class="att-status" style="color:var(--teal);font-size:11px;margin-top:2px">Total: ${total}</div>`;
+          btnHtml    = `<button class="att-out-btn" onclick="attAction('${key}','out')" style="font-size:11px;padding:5px 10px">Update Out</button>`;
+        }
+      }
+      return `<div class="att-item">
+        <div class="att-av ${avClass}">${initials}</div>
+        <div style="flex:1">
+          <div class="att-name">${escHtml(u.username)}</div>
+          <div class="att-status">${escHtml(statusText)}</div>
+          ${totalHtml}
+        </div>
+        ${btnHtml}
+      </div>`;
+    }).join('');
+
+  } catch(err) {
+    // Fallback to local
+    renderAttUsers();
+  }
 }
 
 function renderAttUsers() {
@@ -1279,7 +1349,7 @@ function renderAttUsers() {
         btnHtml = `<button class="att-out-btn" onclick="attAction('${key}','out')">Log Out</button>`;
       } else {
         // Has both in and out — can still log out again (overwrites)
-        const total = calcTotalTime(state.inTime, state.outTime);
+        const total = state.totalTime || calcTotalTime(state.inTime, state.outTime);
         statusText = 'In: ' + state.inTime + ' · Out: ' + state.outTime;
         totalHtml = `<div class="att-status" style="color:var(--teal);font-size:11px;margin-top:2px">Total: ${total}</div>`;
         btnHtml = `<button class="att-out-btn" onclick="attAction('${key}','out')" style="font-size:11px;padding:5px 10px">Update Out</button>`;
@@ -1370,7 +1440,7 @@ function resetTodayAttendance() {
   saveLocalData();
   renderAttUsers();
   // Also clear from sheet if connected
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   if (CFG.scriptUrl) {
     api('resetAttendance', { date: today }).catch(() => {});
   }
@@ -1408,7 +1478,9 @@ async function loadAttHistory() {
         `<div class="att-item">
           <div class="att-av att-av-seller">${r.username.substring(0,2).toUpperCase()}</div>
           <div><div class="att-name">${escHtml(r.username)}</div>
-          <div class="att-status">In: ${r.inTime||'—'} · Out: ${r.outTime||'—'}</div></div>
+          <div class="att-status">In: ${r.inTime||'—'} · Out: ${r.outTime||'—'}</div>
+          ${r.totalTime ? `<div class="att-status" style="color:var(--teal);font-size:11px;margin-top:2px">Total: ${r.totalTime}</div>` : ''}
+          </div>
         </div>`
       ).join('');
     } else {
@@ -1450,7 +1522,7 @@ function renderLog() {
 }
 
 function updateLogStats() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   const todaySales = SALE_LOG.filter(s => s.date === today);
   document.getElementById('log-today-rev').textContent = '₹' + todaySales.reduce((a,s) => a+(s.grandTotal||0), 0).toFixed(0);
   document.getElementById('log-today-cnt').textContent = todaySales.length;

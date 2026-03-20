@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
 <meta name="apple-mobile-web-app-title" content="The Bubbles"/>
-<title>The Bubbles POS v2.1</title>
+<title>The Bubbles POS v2.3</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -281,7 +281,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
            onerror="this.style.display='none';document.getElementById('login-fish-emoji').style.display='block'">
       <span class="login-fish" id="login-fish-emoji" style="display:none">🐠</span>
       <div class="login-brand" id="login-brand-name">The Bubbles</div>
-      <div class="login-tagline">aquarium pos · v2.1</div>
+      <div class="login-tagline">aquarium pos · v2.3</div>
     </div>
     <input class="login-input" id="li-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password">
@@ -1283,34 +1283,35 @@ async function fetchAndRenderAttFromSheet() {
       saveLocalData();
     }
 
+    // Admin sees READ-ONLY view — no login/logout buttons for other users
     el.innerHTML = activeUsers.map(u => {
-      const key   = u.username.toLowerCase();
-      const state = ATT_STATE[key] || {};
+      const key      = u.username.toLowerCase();
+      const state    = ATT_STATE[key] || {};
       const initials = u.username.substring(0, 2).toUpperCase();
       const avClass  = u.role === 'ADMIN' ? 'att-av-admin' : 'att-av-seller';
       let statusText = 'Not logged in today';
       let totalHtml  = '';
-      let btnHtml    = `<button class="att-in-btn" onclick="attAction('${key}','in')">Log In</button>`;
+      let statusColor = 'var(--muted)';
 
       if (state.inTime) {
         if (!state.outTime) {
-          statusText = 'In: ' + state.inTime;
-          btnHtml = `<button class="att-out-btn" onclick="attAction('${key}','out')">Log Out</button>`;
+          statusText  = 'In: ' + state.inTime + ' · Still in';
+          statusColor = 'var(--green)';
         } else {
           const total = state.totalTime || calcTotalTime(state.inTime, state.outTime);
-          statusText = 'In: ' + state.inTime + ' · Out: ' + state.outTime;
-          totalHtml  = `<div class="att-status" style="color:var(--teal);font-size:11px;margin-top:2px">Total: ${total}</div>`;
-          btnHtml    = `<button class="att-out-btn" onclick="attAction('${key}','out')" style="font-size:11px;padding:5px 10px">Update Out</button>`;
+          statusText  = 'In: ' + state.inTime + ' · Out: ' + state.outTime;
+          statusColor = 'var(--text2)';
+          totalHtml   = `<div class="att-status" style="color:var(--teal);font-size:11px;margin-top:2px">Total: ${total}</div>`;
         }
       }
+
       return `<div class="att-item">
         <div class="att-av ${avClass}">${initials}</div>
         <div style="flex:1">
           <div class="att-name">${escHtml(u.username)}</div>
-          <div class="att-status">${escHtml(statusText)}</div>
+          <div class="att-status" style="color:${statusColor}">${escHtml(statusText)}</div>
           ${totalHtml}
         </div>
-        ${btnHtml}
       </div>`;
     }).join('');
 
@@ -1553,16 +1554,56 @@ function renderAdminUsers() {
   const users = JSON.parse(localStorage.getItem('tb_users') || '[]');
   const el = document.getElementById('admin-users-list');
   if (!users.length) { el.innerHTML = '<div class="empty"><div class="empty-text">Sync to load users</div></div>'; return; }
-  el.innerHTML = `<div class="card-hd">Users</div>` + users.map(u => `
-    <div class="att-item">
-      <div class="att-av ${u.role==='ADMIN'?'att-av-admin':'att-av-seller'}">${u.username.substring(0,2).toUpperCase()}</div>
+
+  el.innerHTML = users.map(u => {
+    const isActive  = u.active === 'ACTIVE';
+    const isSelf    = u.username.toLowerCase() === SESSION.user.toLowerCase();
+    const avClass   = u.role === 'ADMIN' ? 'att-av-admin' : 'att-av-seller';
+    const initials  = u.username.substring(0,2).toUpperCase();
+    // Toggle button — disabled for self (can't deactivate yourself)
+    const btnStyle  = isActive
+      ? 'background:#fdecea;color:var(--coral);border:1px solid #f5b8b3;border-radius:8px;font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer'
+      : 'background:var(--greenl);color:var(--green);border:1px solid #9fd4b8;border-radius:8px;font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer';
+    const btnLabel  = isActive ? 'Deactivate' : 'Activate';
+    const btnHtml   = isSelf
+      ? `<span style="font-size:11px;color:var(--muted);padding:5px 8px">You</span>`
+      : `<button style="${btnStyle}" onclick="toggleUserActive('${escHtml(u.username)}','${isActive?'DEACTIVE':'ACTIVE'}')">${btnLabel}</button>`;
+
+    return `<div class="att-item" style="${!isActive?'opacity:0.55':''}">
+      <div class="att-av ${avClass}">${initials}</div>
       <div style="flex:1">
         <div class="att-name">${escHtml(u.username)}</div>
-        <div class="att-status">${u.role} · ${u.active}</div>
+        <div class="att-status">${u.role} · <span style="color:${isActive?'var(--green)':'var(--coral)'}">
+          ${isActive?'Active':'Inactive'}</span></div>
       </div>
-      <span class="pill ${u.active==='ACTIVE'?'pill-ok':'pill-err'}">${u.active}</span>
-    </div>
-  `).join('');
+      ${btnHtml}
+    </div>`;
+  }).join('');
+}
+
+async function toggleUserActive(username, newStatus) {
+  const action = newStatus === 'ACTIVE' ? 'activate' : 'deactivate';
+  if (!confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} user "${username}"?`)) return;
+
+  showToast('Updating…', '');
+  try {
+    const res = await api('setUserStatus', { username, status: newStatus });
+    if (res.status === 'ok') {
+      // Update local cache
+      const users = JSON.parse(localStorage.getItem('tb_users') || '[]');
+      const u = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+      if (u) {
+        u.active = newStatus;
+        localStorage.setItem('tb_users', JSON.stringify(users));
+      }
+      renderAdminUsers();
+      showToast(`${username} ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} ✓`, 'success');
+    } else {
+      showToast('Error: ' + (res.message || 'Failed'), 'error');
+    }
+  } catch(e) {
+    showToast('Failed to update user', 'error');
+  }
 }
 
 async function downloadFromSheet(mode) {
